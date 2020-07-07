@@ -4,10 +4,7 @@ extern crate fs2;
 
 use std::path::Path;
 use std::io::Result;
-use std::fs::File;
-use fs2::FileExt;
 use std::io::{Error, ErrorKind};
-use locker::*;
 
 #[derive(PartialEq, Debug)]
 enum Operation {
@@ -28,9 +25,10 @@ pub struct DataTransferStep<'a> {
     operation: Operation,
 }
 
-trait DataTransferRunner {
+pub trait DataTransferRunner {
     fn run(&self) -> Result<u64>;
     fn validate(&self) -> Result<bool>;
+    fn get_steps(& self) -> &Vec<DataTransferStep>;
 }
 
 impl<'a> DataTransferRunner for DataTransfer<'a> {
@@ -51,6 +49,10 @@ impl<'a> DataTransferRunner for DataTransfer<'a> {
     fn validate(&self) -> Result<bool> {
         Ok(self.steps.iter().all(|step| step.from.exists()))
     }
+
+    fn get_steps<'b>(&'b self) -> &Vec<DataTransferStep<'b>> {
+        &self.steps
+    }
 }
 
 impl PartialEq for DataTransfer<'_> {
@@ -62,7 +64,7 @@ impl PartialEq for DataTransfer<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::locker::locker::with_lock;
+    use crate::locker::with_lock;
 
     fn build_test_data<'a>() -> DataTransfer<'a> {
         let transfer_step = DataTransferStep {
@@ -79,7 +81,7 @@ mod test {
     #[test]
     fn assert_file_exists() {
         let transfer = build_test_data();
-        assert_eq!(transfer.validate(), true)
+        assert_eq!(transfer.validate().unwrap(), true)
     }
 
     #[test]
