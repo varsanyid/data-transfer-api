@@ -66,10 +66,10 @@ mod test {
     use super::*;
     use crate::locker::with_lock;
 
-    fn build_test_data<'a>() -> DataTransfer<'a> {
+    fn build_test_data<'a>(from_temp: &'a Path, to_temp: &'a Path) -> DataTransfer<'a> {
         let transfer_step = DataTransferStep {
-            from: Path::new("C:\\test.txt"),
-            to: Path::new("C:\\test\\test.txt"),
+            from: from_temp,
+            to: to_temp,
             operation: Operation::COPY,
         };
         let transfer = DataTransfer {
@@ -80,13 +80,17 @@ mod test {
 
     #[test]
     fn assert_file_exists() {
-        let transfer = build_test_data();
+        let file_from = &tempfile::NamedTempFile::new().unwrap();
+        let file_to = &tempfile::NamedTempFile::new().unwrap();
+        let transfer = build_test_data(file_from.path(), file_to.path());
         assert_eq!(transfer.validate().unwrap(), true)
     }
 
     #[test]
     fn assert_run_copy() {
-        let transfer = build_test_data();
+        let file_from = &tempfile::NamedTempFile::new().unwrap();
+        let file_to = &tempfile::NamedTempFile::new().unwrap();
+        let transfer = build_test_data(file_from.path(), file_to.path());
         let _copy = with_lock(&transfer);
         let is_successful = transfer.steps.iter().all(|step| step.to.exists());
         assert!(is_successful)
