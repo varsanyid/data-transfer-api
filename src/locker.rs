@@ -4,15 +4,16 @@ use std::fs::File;
 use fs2::FileExt;
 use std::vec::Vec;
 
-    pub fn with_lock<'a>(transfer: &DataTransfer) -> Result<bool> {
-        let result = internal::lock(&transfer.steps)
-            .and_then(|_| transfer.run())
-            .and_then(|_| internal::unlock(&transfer.steps));
-        result
-    }
+pub fn with_lock<'a>(transfer: &DataTransfer) -> Result<bool> {
+    let result = internal::lock(&transfer.steps)
+        .and_then(|_| transfer.run())
+        .and_then(|_| internal::unlock(&transfer.steps));
+    result
+}
 
 mod internal {
     use super::*;
+    use std::io::ErrorKind;
 
     pub(super) fn lock(steps: &Vec<DataTransferStep>) -> Result<bool> {
         let is_lock_acquired = steps.iter().all(|step| {
@@ -24,8 +25,10 @@ mod internal {
 
     pub(super) fn unlock(steps: &Vec<DataTransferStep>) -> Result<bool> {
         let unlocked = steps.iter().all(|step| {
-            let is_unlocked = File::open(step.from).unwrap().unlock().is_ok();
-            is_unlocked
+            match File::open(step.from) {
+                Ok(x) => x.unlock().is_ok(),
+                Err(err) => err.kind() == ErrorKind::NotFound
+            }
         });
         Ok(unlocked)
     }

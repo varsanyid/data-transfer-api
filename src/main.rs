@@ -10,7 +10,6 @@ use std::io::{Error, ErrorKind};
 enum Operation {
     MOVE,
     COPY,
-    MoveAndRemove,
 }
 
 #[derive(Debug)]
@@ -28,7 +27,7 @@ pub struct DataTransferStep<'a> {
 pub trait DataTransferRunner {
     fn run(&self) -> Result<u64>;
     fn validate(&self) -> Result<bool>;
-    fn get_steps(& self) -> &Vec<DataTransferStep>;
+    fn get_steps(&self) -> &Vec<DataTransferStep>;
 }
 
 impl<'a> DataTransferRunner for DataTransfer<'a> {
@@ -37,7 +36,11 @@ impl<'a> DataTransferRunner for DataTransfer<'a> {
             let copy_results = self.steps.iter().fold(0, |acc, step| {
                 match &step.operation {
                     Operation::COPY => acc + std::fs::copy(step.from, step.to).unwrap(),
-                    _ => { unimplemented!("not there yet") }
+                    Operation::MOVE => {
+                        let copied = std::fs::copy(step.from, step.to).unwrap();
+                        let _remove = std::fs::remove_file(step.from);
+                        copied
+                    }
                 }
             });
             return Ok(copy_results);
@@ -65,12 +68,13 @@ impl PartialEq for DataTransfer<'_> {
 mod test {
     use super::*;
     use crate::locker::with_lock;
+    use std::io::Write;
 
-    fn build_test_data<'a>(from_temp: &'a Path, to_temp: &'a Path) -> DataTransfer<'a> {
+    fn build_test_data<'a>(from_temp: &'a Path, to_temp: &'a Path, operation: Operation) -> DataTransfer<'a> {
         let transfer_step = DataTransferStep {
             from: from_temp,
             to: to_temp,
-            operation: Operation::COPY,
+            operation,
         };
         let transfer = DataTransfer {
             steps: vec![transfer_step]
@@ -82,7 +86,7 @@ mod test {
     fn assert_file_exists() {
         let file_from = &tempfile::NamedTempFile::new().unwrap();
         let file_to = &tempfile::NamedTempFile::new().unwrap();
-        let transfer = build_test_data(file_from.path(), file_to.path());
+        let transfer = build_test_data(file_from.path(), file_to.path(), Operation::COPY);
         assert_eq!(transfer.validate().unwrap(), true)
     }
 
@@ -90,10 +94,23 @@ mod test {
     fn assert_run_copy() {
         let file_from = &tempfile::NamedTempFile::new().unwrap();
         let file_to = &tempfile::NamedTempFile::new().unwrap();
-        let transfer = build_test_data(file_from.path(), file_to.path());
+        let transfer = build_test_data(file_from.path(), file_to.path(), Operation::COPY);
         let _copy = with_lock(&transfer);
         let is_successful = transfer.steps.iter().all(|step| step.to.exists());
         assert!(is_successful)
+    }
+
+    #[test]
+    fn assert_move() {
+        let mut test_file = std::fs::File::create("test.dat").unwrap();
+        let _ = test_file.write_all(b"see me getting written");
+        let file_to = &tempfile::NamedTempFile::new().unwrap();
+        let transfer = build_test_data(Path::new("test.dat"), file_to.path(), Operation::MOVE);
+        let _copy = with_lock(&transfer);
+        let origin_exists_after_move = transfer.steps[0].from.exists();
+        let destination_exists_after_move = transfer.steps[0].to.exists();
+        assert!(!origin_exists_after_move);
+        assert!(destination_exists_after_move);
     }
 }
 
